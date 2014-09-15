@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"github.com/garyburd/redigo/redis"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/securecookie"
@@ -19,8 +20,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-    "github.com/garyburd/redigo/redis"
-    "time"
+	"time"
 )
 
 const (
@@ -80,8 +80,8 @@ type View struct {
 
 var (
 	dbConnPool chan *sql.DB
-    redisPool *redis.Pool
-    userPool map[interface{}] *User
+	redisPool  *redis.Pool
+	userPool   map[interface{}]*User
 	baseUrl    *url.URL
 	fmap       = template.FuncMap{
 		"url_for": func(path string) string {
@@ -139,37 +139,37 @@ func main() {
 		defer conn.Close()
 	}
 
-    redisPool = &redis.Pool{
-        MaxIdle: 3,
-        IdleTimeout: 240 * time.Second,
-        Dial: func () (redis.Conn, error) {
-            c, err := redis.Dial("tcp", ":6379")
-            if err != nil {
-                return nil, err
-            }
-            return c, err
-        },
-        TestOnBorrow: func(c redis.Conn, t time.Time) error {
-            _, err := c.Do("PING")
-            return err
-        },
-    }
+	redisPool = &redis.Pool{
+		MaxIdle:     3,
+		IdleTimeout: 240 * time.Second,
+		Dial: func() (redis.Conn, error) {
+			c, err := redis.Dial("tcp", ":6379")
+			if err != nil {
+				return nil, err
+			}
+			return c, err
+		},
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+	}
 
-    // db preload
-    userPool = map[interface{}] *User{}
-    dbConn := <-dbConnPool
-    rows, err := dbConn.Query("SELECT * FROM users")
-    if err != nil {
-        log.Fatal(err)
-        os.Exit(1)
-    }
-    for rows.Next() {
-        user := &User{}
-        rows.Scan(&user.Id, &user.Username, &user.Password, &user.Salt, &user.LastAccess)
-        rows.Close()
-        userPool[user.Id] = user
-    }
-    dbConnPool <- dbConn
+	// db preload
+	userPool = map[interface{}]*User{}
+	dbConn := <-dbConnPool
+	rows, err := dbConn.Query("SELECT * FROM users")
+	if err != nil {
+		log.Fatal(err)
+		os.Exit(1)
+	}
+	for rows.Next() {
+		user := &User{}
+		rows.Scan(&user.Id, &user.Username, &user.Password, &user.Salt, &user.LastAccess)
+		rows.Close()
+		userPool[user.Id] = user
+	}
+	dbConnPool <- dbConn
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", topHandler)
@@ -424,7 +424,7 @@ func signinPostHandler(w http.ResponseWriter, r *http.Request) {
 				serverError(w, err)
 				return
 			}
-            http.Redirect(w, r, "/mypage", http.StatusFound)
+			http.Redirect(w, r, "/mypage", http.StatusFound)
 			return
 		}
 	}

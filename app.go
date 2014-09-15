@@ -19,6 +19,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+    "github.com/garyburd/redigo/redis"
+    "time"
 )
 
 const (
@@ -29,7 +31,7 @@ const (
 	tmpDir             = "/tmp/"
 	markdownCommand    = "../bin/markdown"
 	dbConnPoolSize     = 10
-	memcachedServer    = "localhost:11211"
+	memcachedServer    = "localhost:11212"
 	sessionSecret      = "kH<{11qpic*gf0e21YK7YtwyUvE9l<1r>yX8R-Op"
 )
 
@@ -78,6 +80,8 @@ type View struct {
 
 var (
 	dbConnPool chan *sql.DB
+    redisPool *redis.Pool
+    userPool map[interface{}] *User
 	baseUrl    *url.URL
 	fmap       = template.FuncMap{
 		"url_for": func(path string) string {
@@ -135,6 +139,22 @@ func main() {
 		defer conn.Close()
 	}
 
+    redisPool = &redis.Pool{
+        MaxIdle: 3,
+        IdleTimeout: 240 * time.Second,
+        Dial: func () (redis.Conn, error) {
+            c, err := redis.Dial("tcp", ":6379")
+            if err != nil {
+                return nil, err
+            }
+            return c, err
+        },
+        TestOnBorrow: func(c redis.Conn, t time.Time) error {
+            _, err := c.Do("PING")
+            return err
+        },
+    }
+
 	r := mux.NewRouter()
 	r.HandleFunc("/", topHandler)
 	r.HandleFunc("/signin", signinHandler).Methods("GET", "HEAD")
@@ -183,16 +203,7 @@ func getUser(w http.ResponseWriter, r *http.Request, dbConn *sql.DB, session *se
 	if userId == nil {
 		return nil
 	}
-	user := &User{}
-	rows, err := dbConn.Query("SELECT * FROM users WHERE id=?", userId)
-	if err != nil {
-		serverError(w, err)
-		return nil
-	}
-	if rows.Next() {
-		rows.Scan(&user.Id, &user.Username, &user.Password, &user.Salt, &user.LastAccess)
-		rows.Close()
-	}
+	user := userPool[userId]
 	if user != nil {
 		w.Header().Add("Cache-Control", "private")
 	}

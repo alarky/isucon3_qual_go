@@ -166,9 +166,9 @@ func main() {
 	for rows.Next() {
 		user := &User{}
 		rows.Scan(&user.Id, &user.Username, &user.Password, &user.Salt, &user.LastAccess)
-		rows.Close()
 		userPool[user.Id] = user
 	}
+	rows.Close()
 	dbConnPool <- dbConn
 
 	r := mux.NewRouter()
@@ -219,11 +219,12 @@ func getUser(w http.ResponseWriter, r *http.Request, dbConn *sql.DB, session *se
 	if userId == nil {
 		return nil
 	}
-	user := userPool[userId]
-	if user != nil {
+	user, ok := userPool[userId]
+	if ok {
 		w.Header().Add("Cache-Control", "private")
+		return user
 	}
-	return user
+	return nil
 }
 
 func antiCSRF(w http.ResponseWriter, r *http.Request, session *sessions.Session) bool {

@@ -155,6 +155,22 @@ func main() {
         },
     }
 
+    // db preload
+    userPool = map[interface{}] *User{}
+    dbConn := <-dbConnPool
+    rows, err := dbConn.Query("SELECT * FROM users")
+    if err != nil {
+        log.Fatal(err)
+        os.Exit(1)
+    }
+    for rows.Next() {
+        user := &User{}
+        rows.Scan(&user.Id, &user.Username, &user.Password, &user.Salt, &user.LastAccess)
+        rows.Close()
+        userPool[user.Id] = user
+    }
+    dbConnPool <- dbConn
+
 	r := mux.NewRouter()
 	r.HandleFunc("/", topHandler)
 	r.HandleFunc("/signin", signinHandler).Methods("GET", "HEAD")
@@ -408,12 +424,7 @@ func signinPostHandler(w http.ResponseWriter, r *http.Request) {
 				serverError(w, err)
 				return
 			}
-			if _, err := dbConn.Exec("UPDATE users SET last_access=now() WHERE id=?", user.Id); err != nil {
-				serverError(w, err)
-				return
-			} else {
-				http.Redirect(w, r, "/mypage", http.StatusFound)
-			}
+            http.Redirect(w, r, "/mypage", http.StatusFound)
 			return
 		}
 	}
